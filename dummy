@@ -1,46 +1,27 @@
 pipeline {
     agent any
 
-    stages {
-        stage('Build') {
-            steps {
-                // Add your build commands here
-                echo 'Building...'
-                // For example: sh 'make build'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                // Add your test commands here
-                echo 'Running tests...'
-                // For example: sh 'make test'
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                // Add your deployment commands here
-                echo 'Deploying...'
-                // For example: sh './deploy.sh'
-            }
-        }
+    environment {
+        AZURE_WEBAPP_NAME = 'pytohnharish'
+        AZURE_RESOURCE_GROUP = 'python-rg'
     }
 
-    post {
-        always {
-            // Steps to perform after the pipeline runs, regardless of the result
-            echo 'Build completed.'
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/harishappana1/helloworld-python.git'
+            }
         }
 
-        success {
-            // Steps to perform if the pipeline is successful
-            echo 'Build was successful!'
-        }
-
-        failure {
-            // Steps to perform if the pipeline fails
-            echo 'Build failed.'
+        stage('Deploy to Azure Web App') {
+            steps {
+                script {
+                    sh 'cp app.py requirements.txt $AZURE_WEBAPP_NAME/'
+                    azureWebAppDeploy azureCredentialsId: 'python-sp',
+                                      resourceGroup: "${AZURE_RESOURCE_GROUP}",
+                                      appName: "${AZURE_WEBAPP_NAME}"
+                }
+            }
         }
     }
 }
