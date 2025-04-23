@@ -1,0 +1,64 @@
+name: Enforce Harish Approval
+
+# Run on PR creation, update, review events
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  pull_request_review:
+    types: [submitted, edited]
+
+jobs:
+  require-harish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyGithub
+
+      - name: Validate Harish approval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python - << 'PYCODE'
+          import os, json, sys
+          from github import Github
+
+          # --- load event & auth ---
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          pr_number = event["pull_request"]["number"]
+          repo_full = os.environ["GITHUB_REPOSITORY"]
+          gh = Github(os.environ["GITHUB_TOKEN"])
+          repo = gh.get_repo(repo_full)
+          pr = repo.get_pull(pr_number)
+
+          # --- collate latest reviews per user ---
+          latest = {}
+          for review in pr.get_reviews():
+              user = review.user.login.lower()
+              if user not in latest or review.submitted_at > latest[user].submitted_at:
+                  latest[user] = review
+
+          # --- check for Harish approval ---
+          approved = False
+          for user, review in latest.items():
+              if user == "harish" and review.state == "APPROVED":
+                  approved = True
+                  break
+
+          if not approved:
+              print("❌ Harish has not approved this PR yet.")
+              sys.exit(1)
+
+          print("✅ Harish approval found. Proceeding.")
+          PYCODE
