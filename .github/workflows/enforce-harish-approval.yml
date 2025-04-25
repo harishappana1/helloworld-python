@@ -1,10 +1,8 @@
-name: Enforce Single-User Approval
-
 on:
-  pull_request_target:           # so secrets are available
-    types: [opened, reopened, synchronize]
+  pull_request_target:    # keep this if you must re-read the secret on forks
+    types: []             # ← remove all PR-open/update triggers
   pull_request_review:
-    types: [submitted, edited]
+    types: [submitted]
 
 jobs:
   require-harish-approval:
