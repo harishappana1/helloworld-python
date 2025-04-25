@@ -1,64 +1,60 @@
-name: Enforce Harish Approval
+name: Enforce Single-User Approval
 
-# Run on PR creation, update, review events
 on:
-  pull_request:
+  pull_request_target:           # so secrets are available
     types: [opened, reopened, synchronize]
   pull_request_review:
     types: [submitted, edited]
 
 jobs:
-  require-harish:
+  require-harish-approval:
     runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
+    env:
+      # the one user you require:
+      APPROVER_LOGIN: harishappana7
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      # standard GitHub context
+      GITHUB_TOKEN:    ${{ secrets.CINEWTOKEN }}
+      GITHUB_EVENT_PATH: ${{ github.event_path }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.x"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install PyGithub
+      - name: Install PyGithub
+        run: python -m pip install --upgrade pip PyGithub
 
-      - name: Validate Harish approval
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_EVENT_PATH: ${{ github.event_path }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+      - name: Validate approval by only ${{ env.APPROVER_LOGIN }}
         run: |
           python - << 'PYCODE'
           import os, json, sys
           from github import Github
 
-          # --- load event & auth ---
-          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
-          pr_number = event["pull_request"]["number"]
-          repo_full = os.environ["GITHUB_REPOSITORY"]
-          gh = Github(os.environ["GITHUB_TOKEN"])
-          repo = gh.get_repo(repo_full)
-          pr = repo.get_pull(pr_number)
+          ev    = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          pr_no = ev["pull_request"]["number"]
+          repo  = os.environ["GITHUB_REPOSITORY"]
+          want  = os.environ["APPROVER_LOGIN"].lower()
 
-          # --- collate latest reviews per user ---
+          gh    = Github(os.environ["GITHUB_TOKEN"])
+          pr    = gh.get_repo(repo).get_pull(pr_no)
+
+          # Gather each user’s latest review
           latest = {}
-          for review in pr.get_reviews():
-              user = review.user.login.lower()
-              if user not in latest or review.submitted_at > latest[user].submitted_at:
-                  latest[user] = review
+          for r in pr.get_reviews():
+              u = r.user.login.lower()
+              if u not in latest or r.submitted_at > latest[u].submitted_at:
+                  latest[u] = r
 
-          # --- check for Harish approval ---
-          approved = False
-          for user, review in latest.items():
-              if user == "harish" and review.state == "APPROVED":
-                  approved = True
-                  break
+          # Check: any review from exactly `want` with APPROVED state?
+          for u, r in latest.items():
+              if r.state == "APPROVED" and u == want:
+                  print(f"✅ Approved by {want}.")
+                  sys.exit(0)
 
-          if not approved:
-              print("❌ Harish has not approved this PR yet.")
-              sys.exit(1)
-
-          print("✅ Harish approval found. Proceeding.")
+          print(f"❌ Pull request must be approved by {want}.")
+          sys.exit(1)
           PYCODE
